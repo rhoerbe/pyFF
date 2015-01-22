@@ -278,6 +278,7 @@ class SHIBDiscovery(object):
     def __init__(self, server=None):
         self.server = server
 
+    @cherrypy.expose
     def DS(self, *args, **kwargs):
         kwargs['path'] = "/role/idp.ds"
         return self.server.request(**kwargs)
@@ -299,6 +300,7 @@ class SHIBDiscovery(object):
             kwargs['pfx'] = None
             kwargs['path'] = "/" + "/".join(args)
             return self.server.request(**kwargs)
+
 
 class Reports(object):
 
