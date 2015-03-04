@@ -36,12 +36,6 @@
     </Link>
   </XRD>
   <XRD>
-    <Subject>https://www.aai.dfn.de/fileadmin/metadata/DFN-AAI-metadata.xml</Subject>
-    <Link rel="urn:oasis:names:tc:SAML:2.0:metadata" href="https://www.aai.dfn.de/fileadmin/metadata/DFN-AAI-metadata.xml">
-      <Title>DFN-AAI</Title>
-    </Link>
-  </XRD>
-  <XRD>
     <Subject>https://metadata.eduid.cz/entities/eduid</Subject>
     <Link rel="urn:oasis:names:tc:SAML:2.0:metadata" href="https://metadata.eduid.cz/entities/eduid">
       <Title>eduID.cz</Title>
@@ -230,6 +224,18 @@
   <XRD>
     <Subject>https://iif.iucc.ac.il/sp/saml2/idp/metadata.php</Subject>
     <Link rel="urn:oasis:names:tc:SAML:2.0:metadata" href="https://iif.iucc.ac.il/sp/saml2/idp/metadata.php">
+      <Title>IUCC Identity Federation</Title>
+    </Link>
+  </XRD>
+  <XRD>
+    <Subject>https://www.aai.dfn.de/fileadmin/metadata/sha2/DFN-AAI-Basic-metadata.xml</Subject>
+    <Link rel="urn:oasis:names:tc:SAML:2.0:metadata" href="https://www.aai.dfn.de/fileadmin/metadata/sha2/DFN-AAI-Basic-metadata.xml">
+      <Title>IUCC Identity Federation</Title>
+    </Link>
+  </XRD>
+  <XRD>
+    <Subject>https://www.aai.dfn.de/fileadmin/metadata/sha2/DFN-AAI-metadata.xml</Subject>
+    <Link rel="urn:oasis:names:tc:SAML:2.0:metadata" href="https://www.aai.dfn.de/fileadmin/metadata/sha2/DFN-AAI-metadata.xml">
       <Title>IUCC Identity Federation</Title>
     </Link>
   </XRD>
