@@ -29,7 +29,7 @@ def main():
     args = None
     try:
         opts, args = getopt.getopt(sys.argv[1:], 'hRm', ['help', 'loglevel=', 'logfile=', 'version', 'module'])
-    except getopt.error, msg:
+    except getopt.error as msg:
         print msg
         print __doc__
         sys.exit(2)
@@ -76,7 +76,7 @@ def main():
         for p in args:
             plumbing(p).process(md, state={'batch': True, 'stats': {}})
         sys.exit(0)
-    except Exception, ex:
+    except Exception as ex:
         if logging.getLogger().isEnabledFor(logging.DEBUG):
             traceback.print_exc()
         logging.error(ex)

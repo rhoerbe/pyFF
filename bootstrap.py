@@ -52,7 +52,7 @@ parser.add_option("-t", "--accept-buildout-test-releases",
                   help=("Normally, if you do not specify a --version, the "
                         "bootstrap script and buildout gets the newest "
                         "*final* versions of zc.buildout and its recipes and "
-                        "extensions for you.  If you use this flag, "
+                        "entity_extensions for you.  If you use this flag, "
                         "bootstrap and buildout will get the newest releases "
                         "even if they are alphas or betas."))
 parser.add_option("-c", "--config-file",

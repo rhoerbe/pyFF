@@ -15,7 +15,7 @@ import sys
 
 import os
 
-# If extensions (or modules to document with autodoc) are in another directory,
+# If entity_extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.abspath('../src'))
@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.abspath('../src'))
 # If your documentation needs a minimal Sphinx version, state it here.
 # needs_sphinx = '1.0'
 
-# Add any Sphinx extension module names here, as strings. They can be extensions
+# Add any Sphinx extension module names here, as strings. They can be entity_extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
 extensions = ['sphinx.ext.autodoc', 'sphinx.ext.autosummary']
 
@@ -115,7 +115,7 @@ html_theme = 'default'
 html_logo = "sublimate.png"
 
 # The name of an image file (within the static path) to use as favicon of the
-# docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
+# docs.  This file should be a Windows entity_icon file (.ico) being 16x16 or 32x32
 # pixels large.
 # html_favicon = None
 
@@ -240,7 +240,7 @@ texinfo_documents = [
 # If false, no module index is generated.
 # texinfo_domain_indices = True
 
-# How to display URL addresses: 'footnote', 'no', or 'inline'.
+# How to entity_display_name URL addresses: 'footnote', 'no', or 'inline'.
 # texinfo_show_urls = 'footnote'
 
 autosummary_generate = True

@@ -31,6 +31,8 @@ ATTRS = {'collection': 'http://pyff.io/collection',
          'software': 'http://pyff.io/software',
          'domain': 'http://pyff.io/domain'}
 
+PLACEHOLDER_ICON = 'data:image/gif;base64,R0lGODlhAQABAIABAP///wAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='
+
 DIGESTS = ['sha1', 'md5', 'null']
 
 EVENT_DROP_ENTITY = 'event.drop.entity'
@@ -38,6 +40,11 @@ EVENT_RETRY_URL = 'event.retry.url'
 EVENT_IMPORTED_METADATA = 'event.imported.metadata'
 EVENT_IMPORT_FAIL = 'event.import.failed'
 EVENT_REPOSITORY_LIVE = 'event.repository.live'
+EVENT_TX_COMPLETE = 'event.repository.updated'
+EVENT_TX_ABANDON = 'event.transaction.abandoned'
+EVENT_TX_RETRY = 'event.transaction.retry'
+EVENT_REPOSITORY_RELOAD = 'event.repository.reload'
+EVENT_STORE_RELOAD = 'event.store.reload'
 
 
 class Config(object):
@@ -57,9 +64,15 @@ class Config(object):
     aliases = pyconfig.setting("pyff.aliases", ATTRS)
     base_dir = pyconfig.setting("pyff.base_dir", None)
     proxy = pyconfig.setting("pyff.proxy", False)
-    store = pyconfig.setting("pyff.store", None)
     allow_shutdown = pyconfig.setting("pyff.allow_shutdown", False)
     modules = pyconfig.setting("pyff.modules", [])
+    cache_ttl = pyconfig.setting("pyff.cache.ttl", 300)
+    default_cache_duration = pyconfig.setting("pyff.default.cache_duration", 3600)
+    respect_cache_duration = pyconfig.setting("pyff.respect_cache_duration", True)
+    info_buffer_size = pyconfig.setting("pyff.info_buffer_size", 10)
+    worker_pool_size = pyconfig.setting("pyff.worker_pool_size", 10)
+    store_class = pyconfig.setting("pyff.store.class", "pyff.store:MemoryStore")
+    update_frequency = pyconfig.setting("pyff.update_frequency",600)
 
 
 config = Config()

@@ -14,7 +14,7 @@ $(document).ready(function() {
         '{{^sticky}}<button type="button" data-toggle="tooltip" data-placement="left" class="close unselect" rel="{{entityID}}">&times;</button>{{/sticky}}' +
         '<h4 class="list-group-item-heading">{{title}}</h4>' +
         '<p class="list-group-item-text">' +
-        '{{#icon}}<img src="{{icon}}" class="fallback-icon hidden-xs idp-icon pull-right img-responsive img-thumbnail"/>{{/icon}}' +
+        '{{#entity_icon}}<img src="{{entity_icon}}" class="fallback-entity_icon hidden-xs idp-entity_icon pull-right img-responsive img-thumbnail"/>{{/entity_icon}}' +
         '{{#descr}}<div class="pull-left idp-description hidden-xs">{{descr}}</div>{{/descr}}</p>' +
         '<div class="clearfix"></div>' +
         '</div>');
@@ -280,7 +280,7 @@ $(document).ready(function() {
        $(this).removeClass("active");
     });
 
-    $("img.fallback-icon").error(function(e) {
+    $("img.fallback-entity_icon").error(function(e) {
         $(this).attr('src','/static/icons/1x1t.png').removeClass("img-thumbnail").hide();
     });
 

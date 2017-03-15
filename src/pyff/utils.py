@@ -1,4 +1,6 @@
 # coding=utf-8
+from __future__ import print_function, unicode_literals, absolute_import
+
 """
 
 This module contains various utilities.
@@ -7,40 +9,30 @@ This module contains various utilities.
 import hashlib
 import io
 import tempfile
-from collections import namedtuple
 from datetime import timedelta, datetime
 from email.utils import parsedate
 from threading import local
 from time import gmtime, strftime, clock
-from traceback import print_exc
 from urlparse import urlparse
-from itertools import chain
+from UserDict import UserDict
 
 import xmlsec
 import cherrypy
-import httplib2
 import iso8601
 import os
 import pkg_resources
 import re
 from jinja2 import Environment, PackageLoader
 from lxml import etree
-
-from .constants import NS
 from .constants import config
-from .decorators import retry
 from .logs import log
+from .exceptions import *
+import i18n
 
 __author__ = 'leifj'
 
-import i18n
-
 sentinel = object()
 thread_data = local()
-
-
-class PyffException(Exception):
-    pass
 
 
 def xml_error(error_log, m=None):
@@ -57,6 +49,9 @@ def xml_error(error_log, m=None):
 def debug_observer(e):
     log.error(repr(e))
 
+
+def trunc_str(x, l):
+    return (x[:l] + '..') if len(x) > l else x
 
 def resource_string(name, pfx=None):
     """
@@ -183,7 +178,7 @@ def schema():
             parser.resolvers.add(ResourceResolver())
             st = etree.parse(pkg_resources.resource_stream(__name__, "schema/schema.xsd"), parser)
             thread_data.schema = etree.XMLSchema(st)
-        except etree.XMLSchemaParseError, ex:
+        except etree.XMLSchemaParseError as ex:
             log.error(xml_error(ex.error_log))
             raise ex
     return thread_data.schema
@@ -225,13 +220,13 @@ def safe_write(fn, data):
         if os.path.exists(tmpn) and os.stat(tmpn).st_size > 0:
             os.rename(tmpn, fn)
             return True
-    except Exception, ex:
+    except Exception as ex:
         log.error(ex)
     finally:
         if tmpn is not None and os.path.exists(tmpn):
             try:
                 os.unlink(tmpn)
-            except Exception, ex:
+            except Exception as ex:
                 log.warn(ex)
     return False
 
@@ -273,67 +268,10 @@ def render_template(name, **kwargs):
     return template(name).render(**kwargs)
 
 
-_Resource = namedtuple("Resource", ["result", "cached", "date", "last_modified", "resp", "time"])
-
-
 def parse_date(s):
     if s is None:
         return datetime.now()
     return datetime(*parsedate(s)[:6])
-
-
-@retry((IOError, httplib2.HttpLib2Error))
-def load_url(url, enable_cache=True, timeout=60):
-    start_time = clock()
-    cache = httplib2.FileCache(".cache")
-    headers = dict()
-    if not enable_cache:
-        headers['cache-control'] = 'no-cache'
-
-    log.debug("fetching (caching: %s) '%s'" % (enable_cache, url))
-
-    if url.startswith('file://'):
-        path = url[7:]
-        if not os.path.exists(path):
-            log.error("file not found: %s" % path)
-            return _Resource(result=None,
-                             cached=False,
-                             date=None,
-                             resp=None,
-                             time=None,
-                             last_modified=None)
-
-        with io.open(path, 'rb') as fd:
-            return _Resource(result=fd.read(),
-                             cached=False,
-                             date=datetime.now(),
-                             resp=None,
-                             time=clock() - start_time,
-                             last_modified=datetime.fromtimestamp(os.stat(path).st_mtime))
-    else:
-        h = httplib2.Http(cache=cache,
-                          timeout=timeout,
-                          disable_ssl_certificate_validation=True)  # trust is done using signatures over here
-        log.debug("about to request %s" % url)
-        print repr(cache.__dict__)
-        try:
-            resp, content = h.request(url, headers=headers)
-        except Exception, ex:
-            print_exc(ex)
-            raise ex
-        log.debug("got status: %d" % resp.status)
-        if resp.status != 200:
-            log.debug("got resp code %d (%d bytes)" % (resp.status, len(content)))
-            raise IOError(resp.reason)
-        log.debug("last-modified header: %s" % resp.get('last-modified'))
-        log.debug("date header: %s" % resp.get('date'))
-        log.debug("last modified: %s" % resp.get('date', resp.get('last-modified', None)))
-        return _Resource(result=content,
-                         cached=resp.fromcache,
-                         date=parse_date(resp['date']),
-                         resp=resp,
-                         time=clock() - start_time,
-                         last_modified=parse_date(resp.get('date', resp.get('last-modified', None))))
 
 
 def root(t):
@@ -398,7 +336,7 @@ def xslt_transform(t, stylesheet, params=None):
     transform = thread_data.xslt[stylesheet]
     try:
         return transform(t, **params)
-    except etree.XSLTApplyError, ex:
+    except etree.XSLTApplyError as ex:
         for entry in transform.error_log:
             log.error('\tmessage from line %s, col %s: %s' % (entry.line, entry.column, entry.message))
             log.error('\tdomain: %s (%d)' % (entry.domain_name, entry.domain))
@@ -464,86 +402,6 @@ def parse_xml(io, base_url=None):
     return etree.parse(io, base_url=base_url, parser=etree.XMLParser(resolve_entities=False))
 
 
-class EntitySet(object):
-    def __init__(self, initial=None):
-        self._e = dict()
-        if initial is not None:
-            for e in initial:
-                self.add(e)
-
-    def add(self, value):
-        self._e[value.get('entityID')] = value
-
-    def discard(self, value):
-        entity_id = value.get('entityID')
-        if entity_id in self._e:
-            del self._e[entity_id]
-
-    def __iter__(self):
-        for e in self._e.values():
-            yield e
-
-    def __len__(self):
-        return len(self._e.keys())
-
-    def __contains__(self, item):
-        return item.get('entityID') in self._e.keys()
-
-
-class MetadataException(Exception):
-    pass
-
-
-class MetadataExpiredException(MetadataException):
-    pass
-
-
-def find_merge_strategy(strategy_name):
-    if '.' not in strategy_name:
-        strategy_name = "pyff.merge_strategies.%s" % strategy_name
-    (mn, sep, fn) = strategy_name.rpartition('.')
-    # log.debug("import %s from %s" % (fn,mn))
-    module = None
-    if '.' in mn:
-        (pn, sep, modn) = mn.rpartition('.')
-        module = getattr(__import__(pn, globals(), locals(), [modn], -1), modn)
-    else:
-        module = __import__(mn, globals(), locals(), [], -1)
-    strategy = getattr(module, fn)  # we might aswell let this fail early if the strategy is wrongly named
-
-    if strategy is None:
-        raise MetadataException("Unable to find merge strategy %s" % strategy_name)
-
-    return strategy
-
-
-def entities_list(t=None):
-    """
-        :param t: An EntitiesDescriptor or EntityDescriptor element
-
-        Returns the list of contained EntityDescriptor elements
-        """
-    if t is None:
-        return []
-    elif root(t).tag == "{%s}EntityDescriptor" % NS['md']:
-        return [root(t)]
-    else:
-        return iter_entities(t)
-
-
-def iter_entities(t):
-    if t is None:
-        return []
-    return t.iter('{%s}EntityDescriptor' % NS['md'])
-
-
-def find_entity(t, e_id, attr='entityID'):
-    for e in iter_entities(t):
-        if e.get(attr) == e_id:
-            return e
-    return None
-
-
 def has_tag(t, tag):
     tags = t.iter(tag)
     return next(tags, sentinel) is not sentinel
@@ -591,57 +449,45 @@ def avg_domain_distance(d1, d2):
     return int(dd / n)
 
 
-# semantics copied from https://github.com/lordal/md-summary/blob/master/md-summary
-# many thanks to Anders Lordahl & Scotty Logan for the idea
-def guess_entity_software(e):
-    for elt in chain(e.findall(".//{%s}SingleSignOnService" % NS['md']), e.findall(".//{%s}AssertionConsumerService" % NS['md'])):
-        location = elt.get('Location')
-        if location:
-            if 'Shibboleth.sso' in location \
-                    or 'profile/SAML2/POST/SSO' in location \
-                    or 'profile/SAML2/Redirect/SSO' in location \
-                    or 'profile/Shibboleth/SSO' in location:
-                return 'Shibboleth'
-            if location.endswith('saml2/idp/SSOService.php') or 'saml/sp/saml2-acs.php' in location:
-                return 'SimpleSAMLphp'
-            if location.endswith('user/authenticate'):
-                return 'KalturaSSP'
-            if location.endswith('adfs/ls') or location.endswith('adfs/ls/'):
-                return 'ADFS'
-            if '/oala/' in location or 'login.openathens.net' in location:
-                return 'OpenAthens'
-            if '/idp/SSO.saml2' in location or '/sp/ACS.saml2' in location or 'sso.connect.pingidentity.com' in location:
-                return 'PingFederate'
-            if 'idp/saml2/sso' in location:
-                return 'Authentic2'
-            if 'nidp/saml2/sso' in location:
-                return 'Novell Access Manager'
-            if 'affwebservices/public/saml2sso' in location:
-                return 'CASiteMinder'
-            if 'FIM/sps' in location:
-                return 'IBMTivoliFIM'
-            if 'sso/post' in location \
-                    or 'sso/redirect' in location \
-                    or 'saml2/sp/acs' in location \
-                    or 'saml2/ls' in location \
-                    or 'saml2/acs' in location \
-                    or 'acs/redirect' in location \
-                    or 'acs/post' in location \
-                    or 'saml2/sp/ls/' in location:
-                return 'PySAML'
-            if 'engine.surfconext.nl' in location:
-                return 'SURFConext'
-            if 'opensso' in location:
-                return 'OpenSSO'
-            if 'my.salesforce.com' in location:
-                return 'Salesforce'
+def load_callable( name ):
+    from importlib import import_module
+    p, m = name.rsplit(':', 1)
+    mod = import_module(p)
+    return getattr(mod, m)
 
-    entity_id = e.get('entityID')
-    if '/shibboleth' in entity_id:
-        return 'Shibboleth'
-    if entity_id.endswith('/metadata.php'):
-        return 'SimpleSAMLphp'
-    if '/openathens' in entity_id:
-        return 'OpenAthens'
 
-    return 'other'
+class Observable(object):
+    def __init__(self):
+        self.callbacks = dict()
+
+    def subscribe(self, cb, ref=None):
+        if ref is None:
+            ref = id(cb)
+        self.callbacks[ref] = cb
+        return ref
+
+    def unsubscribe(self, ref):
+        if ref in self.callbacks:
+            del self.callbacks[ref]
+
+    def event(self, **attrs):
+        attrs['time'] = datetime.now()
+        for fn in self.callbacks:
+            fn(**attrs)
+
+    def onlyonce(self, cb, ref=None):
+        if ref is None:
+            ref = id(cb)
+        self.subscribe(OnlyOnce(self, cb, ref=ref), ref=ref)
+
+
+class OnlyOnce(object):
+
+    def __init__(self, observable, callback, ref=None):
+        self._observable = observable
+        self._callback = callback
+        self._ref = ref
+
+    def __call__(self, *args, **kwargs):
+        if self._callback(args, kwargs) is not None:
+            self._observable.unsubscribe(self._ref)

@@ -44,8 +44,10 @@ An implementation of draft-lajoie-md-query
             One or more pipeline files
 
 """
-import importlib
 
+from __future__ import absolute_import, print_function, unicode_literals
+
+import importlib
 import pkg_resources
 
 try:
@@ -67,19 +69,21 @@ from cherrypy.lib import cptools
 from cherrypy.process.plugins import Monitor, SimplePlugin
 from cherrypy.lib import caching
 from simplejson import dumps
-from pyff.constants import ATTRS, EVENT_REPOSITORY_LIVE, config
-from pyff.locks import ReadWriteLock
-from pyff.mdrepo import MDRepository
-from pyff.pipes import plumbing
-from pyff.utils import resource_string, xslt_transform, dumptree, duration2timedelta, debug_observer, render_template
-from pyff.logs import log, SysLogLibHandler
+from .constants import config
+from .locks import ReadWriteLock
+from .mdrepo import MDRepository
+from .pipes import plumbing
+from .utils import resource_string, xslt_transform, dumptree, duration2timedelta, \
+    debug_observer, render_template, hash_id
+from .logs import log, SysLogLibHandler
+from .samlmd import entity_simple_summary, entity_display_name
 import logging
-from pyff.stats import stats
+from .stats import stats
 from lxml import html
 from datetime import datetime
 from lxml import etree
-from pyff import __version__ as pyff_version
-from pyff.store import MemoryStore, RedisStore
+from . import __version__ as pyff_version
+from .store import MemoryStore, RedisStore
 from publicsuffix import PublicSuffixList
 import i18n
 
@@ -89,7 +93,7 @@ site_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "site")
 
 
 class MDUpdate(Monitor):
-    def __init__(self, bus, frequency=600, server=None):
+    def __init__(self, bus, frequency=int(config.update_frequency), server=None):
         self.lock = Lock()
         self.server = server
         self.bus = bus
@@ -102,27 +106,12 @@ class MDUpdate(Monitor):
         try:
             self.lock.acquire()
             locked = True
-            md = self.server.md.clone()
 
             for p in server.plumbings:
-                state = {'update': True, 'stats': {}}
-                p.process(md, state)
-                stats.update(state.get('stats', {}))
+                state = {'update': True}
+                p.process(self.server.md, state)
 
-            with server.lock.writelock:
-                log.debug("update produced new repository with %d entities" % server.md.store.size())
-                server.md = md
-                server.md.fire(type=EVENT_REPOSITORY_LIVE, size=server.md.store.size())
-                stats['Repository Update Time'] = datetime.now()
-                stats['Repository Size'] = server.md.store.size()
-
-            self.nruns += 1
-
-            stats['Updates Since Server Start'] = self.nruns
-
-            if hasattr(self.server.md.store, 'periodic'):
-                self.server.md.store.periodic(stats)
-        except Exception, ex:
+        except Exception as ex:
             log.error(ex.message)
         finally:
             if locked:
@@ -244,12 +233,12 @@ listed using the 'role' attribute to the link elements.
         links = list()
         jrd['links'] = links
 
-        def _links(a):
+        def _links(url):
             links.append(
                 dict(rel='urn:oasis:names:tc:SAML:2.0:metadata',
                      role="provider",
-                     href='%s/%s.xml' % (cherrypy.request.base, a)))
-            links.append(dict(rel='disco-json', href='%s/%s.json' % (cherrypy.request.base, a)))
+                     href='%s/%s.xml' % (cherrypy.request.base, url)))
+            links.append(dict(rel='disco-json', href='%s/%s.json' % (cherrypy.request.base, url)))
 
         for a in self.server.md.store.collections():
             if '://' not in a:
@@ -323,10 +312,10 @@ class MDRoot(object):
 
     try:  # pragma: nocover
         import dowser
-
         memory = dowser.Root()
     except ImportError:
         memory = NotImplementedFunction('Memory profiling needs dowser')
+        dowser = NotImplementedFunction('Memory profiling needs dowser')
 
     _well_known = WellKnown()
     static = cherrypy.tools.staticdir.handler("/static", os.path.join(site_dir, "static"))
@@ -362,9 +351,9 @@ Disallow: /
 
     @cherrypy.expose
     def favicon_ico(self):
-        """Returns the pyff icon (the alchemic symbol for sublimation).
+        """Returns the pyff entity_icon (the alchemic symbol for sublimation).
         """
-        cherrypy.response.headers['Content-Type'] = 'image/x-icon'
+        cherrypy.response.headers['Content-Type'] = 'image/x-entity_icon'
         return resource_string('favicon.ico', "site/static/icons")
 
     @cherrypy.expose
@@ -476,7 +465,7 @@ class MDServer(object):
         self.refresh.subscribe()
         self.aliases = config.aliases
         self.psl = PublicSuffixList()
-        self.md = MDRepository(metadata_cache_enabled=config.caching_enabled, store=config.store)
+        self.md = MDRepository()
 
         if config.autoreload:
             for f in pipes:
@@ -508,7 +497,8 @@ class MDServer(object):
                 return False
 
     def request(self, **kwargs):
-        """The main request processor. This code implements all rendering of metadata.
+        """
+        The main request processor. This code implements all rendering of metadata.
         """
         stats['MD Requests'] += 1
 
@@ -582,7 +572,7 @@ class MDServer(object):
                 entity_id = kwargs.get('entityID', None)
                 if entity_id is None:
                     raise HTTPError(400, _("400 Bad Request - missing entityID"))
-                pdict['sp'] = self.md.sha1_id(entity_id)
+                pdict['sp'] = hash_id(entity_id, 'sha1')
                 e = self.md.store.lookup(entity_id)
                 if e is None or len(e) == 0:
                     raise HTTPError(404)
@@ -590,7 +580,7 @@ class MDServer(object):
                 if len(e) > 1:
                     raise HTTPError(400, _("400 Bad Request - multiple matches for") + " %s" % entity_id)
 
-                pdict['entity'] = self.md.simple_summary(e[0])
+                pdict['entity'] = entity_simple_summary(e[0])
                 if not path:
                     pdict['search'] = "/search/"
                     pdict['list'] = "/role/idp.json"
@@ -675,7 +665,7 @@ class MDServer(object):
                                 p.text = c_txt
                         xml = dumptree(t, xml_declaration=False).decode('utf-8')
                         return render_template("entity.html",
-                                               headline=self.md.display(entity).strip(),
+                                               headline=entity_display_name(entity),
                                                subheading=entity.get('entityID'),
                                                entity_id=entity.get('entityID'),
                                                content=xml)
@@ -709,9 +699,9 @@ def main():
                                    ['help', 'loglevel=', 'log=', 'access-log=', 'error-log=',
                                     'port=', 'host=', 'no-caching', 'autoreload', 'frequency=', 'modules=',
                                     'alias=', 'dir=', 'version', 'proxy', 'allow_shutdown'])
-    except getopt.error, msg:
-        print msg
-        print __doc__
+    except getopt.error as msg:
+        print(msg)
+        print(__doc__)
         sys.exit(2)
 
     if config.store is None:
@@ -729,7 +719,7 @@ def main():
     try:  # pragma: nocover
         for o, a in opts:
             if o in ('-h', '--help'):
-                print __doc__
+                print(__doc__)
                 sys.exit(0)
             elif o == '--loglevel':
                 config.loglevel = getattr(logging, a.upper(), None)
@@ -774,14 +764,14 @@ def main():
             elif o in ('-m', '--module'):
                 config.modules.append(a)
             elif o in '--version':
-                print "pyffd version %s (cherrypy version %s)" % (pyff_version, cherrypy.__version__)
+                print("pyffd version %s (cherrypy version %s)" % (pyff_version, cherrypy.__version__))
                 sys.exit(0)
             else:
                 raise ValueError("Unknown option '%s'" % o)
 
-    except Exception, ex:
-        print ex
-        print __doc__
+    except Exception as ex:
+        print(ex)
+        print(__doc__)
         sys.exit(3)
 
     engine = cherrypy.engine

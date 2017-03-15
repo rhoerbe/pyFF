@@ -193,7 +193,7 @@ class PyFFDTest(PipeLineTest):
     def test_favicon(self):
         r = requests.get("http://127.0.0.1:%s/favicon.ico" % self.port)
         assert (r.status_code == 200)
-        assert (r.headers['Content-Type'] == 'image/x-icon')
+        assert (r.headers['Content-Type'] == 'image/x-entity_icon')
 
     def test_ds_bad_request(self):
         r = requests.get("http://127.0.0.1:%s/role/idp.ds" % self.port)
