@@ -1,15 +1,15 @@
 <!doctype html>
 <html>
   <head>
-      <title>Storage Hub</title>
+      <title>pyFF Storage Hub @ {{vhost}}</title>
       <meta charset="utf-8">
       <script type="text/javascript" src="/static/js/hub.min.js"></script>
   </head>
   <body>
     <script>
       CrossStorageHub.init([
-          {origin: /{{vhost}}$/, allow: ['get','set','del']},
-          {origin: /{{origin}$/, allow: ['get']}
+          {% raw %}{{% endraw %} origin: /{{vhost}}$/, allow: ['get','set','del']{% raw %}}{% endraw %},
+          {% raw %}{{% endraw %} origin: /{{origin}}$/, allow: ['get'] {% raw %}}{% endraw %}
       ]);
     </script>
   </body>
