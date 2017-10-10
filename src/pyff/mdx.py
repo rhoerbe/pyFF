@@ -544,6 +544,7 @@ class MDServer(object):
                    'htm': 'text/html',
                    'html': 'text/html',
                    'ds': 'text/html',
+                   'dse': 'text/html',
                    's': 'application/json'}
 
         alias = None
@@ -599,6 +600,30 @@ class MDServer(object):
                     pdict['list'] = "%s.json" % path
                 cherrypy.response.headers['Content-Type'] = 'text/html'
                 return render_template("ds.html", **pdict)
+            elif ext == 'dse':
+                pdict = dict()
+                entity_id = kwargs.get('entityID', None)
+                if entity_id is None:
+                    raise HTTPError(400, _("400 Bad Request - missing entityID"))
+
+                e = self.md.store.lookup(entity_id)
+                if e is None or len(e) == 0:
+                    raise HTTPError(404)
+
+                if len(e) > 1:
+                    raise HTTPError(400, _("400 Bad Request - multiple matches for") + " %s" % entity_id)
+
+                #pdict['origin'] = self.md.discovery_origin(e[0])
+
+                def _ds_origin(e_id):
+                    from urlparse import urlparse
+                    o = urlparse(e_id)
+                    return o.hostname
+
+                pdict['origin'] = _ds_origin(entity_id)
+
+                cherrypy.response.headers['Content-Type'] = 'text/html'
+                return render_template("embed.html", **pdict)
             elif ext == 's':
                 paged = bool(kwargs.get('paged', False))
                 query = kwargs.get('query', None)
