@@ -9,7 +9,6 @@
 - when update:
     - load:
        - examples/links.xrd as links via normalize
-       #- http://mds.edugain.org via edugain
     - loadstats
     - select
     - fork and merge:
@@ -24,10 +23,6 @@
     - fork:
         - select as /md/foo-2.0:
             - http://pyff.io/collection=swamid-2.0
-        - break
-    - fork:
-        - select as /md/skolfederation-2.0:
-            - http://meta01.skolfederation.se/skolfederation-2_0.xml 
         - break
     - fork:
         - select as /ndn:
