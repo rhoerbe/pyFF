@@ -1,0 +1,70 @@
+{% extends "common.html" %}
+
+{% block title %}{{ gettext('Please login...') }}{% endblock %}
+
+{% block header %}
+    <div class="row vertical-align">
+        <div class="col-md-12">
+            <ul class="list-inline">
+                {% if 'icon' in entity %}
+                <li id="sp-icon-container">
+                    <img class="sp-thumbnail fallback" src="{{ entity['icon'] }}"/>
+                </li>
+                {% endif %}
+                <li id="sp-title-container">
+                    <div class="small">{{ gettext('You are accessing ...') }}</div>
+                    {% if 'title' in entity %}
+                    <h3 class="sp">{{ entity['title'] }}</h3>
+                    {% else %}
+                    <h3 class="sp">{{ entity['entity_id'] }}</h3>
+                    {% endif %}
+                    {% if 'descr' in entity and entity['descr'] != entity['title'] %}
+                    <span class="small">{{ entity['descr'] }}</span>
+                    {% endif %}
+                    {% if 'psu' in entity %}
+                    <span class="small">
+                        <a title="Privacy Statement" href="{{ entity['psu'] }}">Privacy Statement</a>
+                    </span>
+                    {% endif %}
+                </li>
+            </ul>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+        <p class="small">
+            {{ gettext('This service requests that you login.') }}
+        </p>
+        <div id="ds"
+             data-href="{{ entity['entity_id'] }}"
+             data-mdq="/metadata/"
+             data-store="{{storage}}"
+             data-search="{{search}}"
+             data-list="{{list}}"
+             data-related="{{ entity['domains'] }}"
+             data-inputfieldselector="#searchinput">
+            <div class="form-group">
+                <div class="input-group">
+                    <div class="input-group-addon"><i id="searchindicator" class="fa fa-search"></i></div>
+                    <input id="searchinput" placeholder="{{ gettext('Start typing to search for your login provider or home organization ...') }}" class="form-control" type="search"/>
+                </div>
+            </div>
+        </div>
+{% endblock %}
+
+{% block final %}
+    <script type="text/javascript">
+        $(document).ready(function() {
+            $("#ds").discovery_client();
+        });
+    </script>
+{% endblock %}
+
+{% block footer %}
+        <!-- small id="reset_info" class="hidden">
+            <i class="glyphicon glyphicon-exclamation-sign"></i> If you change your mind, visit <a href="{{http.base}}/reset">{{http.base}}/reset</a> to change your settings.
+        </small -->
+{% endblock %}
+</body>
+</html>
