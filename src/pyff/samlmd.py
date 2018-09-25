@@ -823,6 +823,30 @@ def set_entity_attributes(e, d, nf=NF_URI):
         a.append(velt)
 
 
+def set_nodecountry(e, country_code):
+    """Set eidas:NodeCountry on an EntityDescriptor
+
+:param e: The EntityDescriptor element
+:raise: MetadataException unless e is an EntityDescriptor element
+    """
+    if e.tag != "{%s}EntityDescriptor" % NS['md']:
+        raise MetadataException("I can only add NodeCountry to EntityDescriptor elements")
+
+    ext = None
+    idp = e.find("./{%s}IDPSSODescriptor" % NS['md'])
+    if idp:
+        ext = entity_extensions(idp)
+
+    sp = e.find("./{%s}SPSSODescriptor" % NS['md'])
+    if sp:
+        ext = entity_extensions(sp)
+
+    if ext is not None and not ext.find("{%s}NodeCountry" % NS['eidas']):
+        velt = etree.Element("{%s}NodeCountry" % NS['eidas'])
+        velt.text = country_code
+        ext.append(velt)
+
+
 def set_pubinfo(e, publisher=None, creation_instant=None):
     if e.tag != "{%s}EntitiesDescriptor" % NS['md']:
         raise MetadataException("I can only set RegistrationAuthority to EntitiesDescriptor elements")
