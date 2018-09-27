@@ -1377,7 +1377,7 @@ Transforms the working document by setting NodeCountry
 .. code-block:: yaml
 
     - nodecountry:
-        eidas_territory: XX
+        country: XX
 
 Normally this would be combined with the 'merge' feature of fork or in a cleanup pipline to add attributes to
 the working document for later processing.
@@ -1386,10 +1386,10 @@ the working document for later processing.
         raise PipeException("Your pipeline is missing a select statement.")
 
     for e in iter_entities(req.t):
-        if req.args is not None and 'eidas_territory' in req.args:
-            set_nodecountry(e, country_code=req.args['eidas_territory'])
+        if req.args is not None and 'country' in req.args:
+            set_nodecountry(e, country_code=req.args['country'])
             req.store.update(e)
         else:
-            log.error("No eidas_territory found in arguments to nodecountry")
+            log.error("No country found in arguments to nodecountry")
 
     return req.t
