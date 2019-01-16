@@ -1,14 +1,14 @@
 import os
 from .utils import parse_xml, root, first_text
 from .constants import NS
-from .logs import log
+from .logs import get_log
 from xmlsec.crypto import CertDict
 from datetime import datetime
-from samlmd import SAMLMetadataResourceParser
 from six import StringIO
 
 __author__ = 'leifj'
 
+log = get_log(__name__)
 
 class ParserException(Exception):
     def __init__(self, msg, wrapped=None, data=None):
@@ -130,8 +130,7 @@ class MDServiceListParser():
         return info
 
 
-_parsers = [SAMLMetadataResourceParser(), XRDParser(), MDServiceListParser(), DirectoryParser('.xml'), NoParser()]
-
+_parsers = [XRDParser(), MDServiceListParser(), DirectoryParser('.xml'), NoParser()]
 
 
 def add_parser(parser):

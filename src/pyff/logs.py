@@ -2,7 +2,13 @@ __author__ = 'leifj'
 
 import logging
 import syslog
-import cherrypy
+import os
+
+try:
+    import cherrypy
+except Exception as e:
+    print("cherrypy logging disabled")
+    cherrypy = None
 
 
 def printable(s):
@@ -15,16 +21,19 @@ def printable(s):
 
 
 class PyFFLogger(object):
-    def __init__(self):
-        self._loggers = {logging.WARN: logging.warn,
-                         logging.WARNING: logging.warn,
-                         logging.CRITICAL: logging.critical,
-                         logging.INFO: logging.info,
-                         logging.DEBUG: logging.debug,
-                         logging.ERROR: logging.error}
+    def __init__(self, name=None):
+        if name is None:
+            name = __name__
+        self._log = logging.getLogger(name)
+        self._loggers = {logging.WARN: self._log.warn,
+                         logging.WARNING: self._log.warn,
+                         logging.CRITICAL: self._log.critical,
+                         logging.INFO: self._log.info,
+                         logging.DEBUG: self._log.debug,
+                         logging.ERROR: self._log.error}
 
     def _l(self, severity, msg):
-        if '' in cherrypy.tree.apps:
+        if cherrypy is not None and '' in cherrypy.tree.apps:
             cherrypy.tree.apps[''].log(printable(msg), severity=severity)
         elif severity in self._loggers:
             self._loggers[severity](printable(msg))
@@ -50,11 +59,14 @@ class PyFFLogger(object):
         return self._l(logging.DEBUG, msg)
 
     def isEnabledFor(self, lvl):
-        return logging.getLogger(__name__).isEnabledFor(lvl)
+        return self._log.isEnabledFor(lvl)
 
 
-log = PyFFLogger()
+def get_log(name):
+    return PyFFLogger(name)
 
+
+log = get_log('pyff')
 
 # http://www.aminus.org/blogs/index.php/2008/07/03/writing-high-efficiency-large-python-sys-1?blog=2
 # blog post explicitly gives permission for use

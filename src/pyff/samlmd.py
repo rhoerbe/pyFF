@@ -3,7 +3,7 @@ from datetime import datetime
 from .utils import parse_xml, check_signature, root, validate_document, xml_error, \
     schema, iso2datetime, duration2timedelta, filter_lang, url2host, trunc_str, subdomains, \
     has_tag, hash_id, load_callable, rreplace, dumptree, first_text, url_get, img_to_data
-from .logs import log
+from .logs import get_log
 from .constants import config, NS, ATTRS, NF_URI
 from lxml import etree
 from lxml.builder import ElementMaker
@@ -14,6 +14,10 @@ from .exceptions import *
 import traceback
 from six import StringIO
 from requests import ConnectionError
+from .fetch import ResourceManager
+from .parse import add_parser
+
+log = get_log(__name__)
 
 
 class EntitySet(object):
@@ -95,25 +99,24 @@ def parse_saml_metadata(source,
             filter_invalid = False
 
         if validate:
-            log.debug("Filtering invalids from {}".format(base_url))
-            if filter_invalid:
-                t = filter_invalids_from_document(t, base_url=base_url, validation_errors=validation_errors)
-            else:  # all or nothing
-                log.debug("Validating (one-shot) {}".format(base_url))
-                try:
-                    validate_document(t)
-                except DocumentInvalid as ex:
-                    validation_errors[base_url] = xml_error(ex.error_log, m=base_url)
-                    raise MetadataException("schema validation failed: [{}] '{}': {}"
-                                            .format(base_url, source, xml_error(ex.error_log, m=base_url)))
+            t = filter_or_validate(t,
+                                   filter_invalid=filter_invalid,
+                                   base_url=base_url,
+                                   source=source,
+                                   validation_errors=validation_errors)
 
         if t is not None:
             if t.tag == "{%s}EntityDescriptor" % NS['md']:
-                t = entitiesdescriptor([t], base_url, copy=False, validate=True, nsmap=t.nsmap)
+                t = entitiesdescriptor([t],
+                                       base_url,
+                                       copy=False,
+                                       validate=True,
+                                       filter_invalid=filter_invalid,
+                                       nsmap=t.nsmap)
 
     except Exception as ex:
         log.debug(traceback.format_exc())
-        log.error(ex)
+        log.error("Error parsing {}: {}".format(base_url, ex))
         if fail_on_error:
             raise ex
 
@@ -124,7 +127,7 @@ def parse_saml_metadata(source,
     return t, expire_time_offset
 
 
-class SAMLMetadataResourceParser():
+class SAMLMetadataResourceParser:
     def __init__(self):
         pass
 
@@ -154,6 +157,7 @@ class SAMLMetadataResourceParser():
 
         return info
 
+add_parser(SAMLMetadataResourceParser())
 
 def metadata_expiration(t):
     relt = root(t)
@@ -181,12 +185,35 @@ def filter_invalids_from_document(t, base_url, validation_errors):
         if not xsd.validate(e):
             log.debug(etree.tostring(e))
             error = xml_error(xsd.error_log, m=base_url)
-            entity_id = e.get("entityID","(Missing entityID)")
+            entity_id = e.get("entityID", "(Missing entityID)")
             log.warn('removing \'%s\': schema validation failed: %s' % (entity_id, xsd.error_log))
             validation_errors[entity_id] = "{}".format(xsd.error_log)
             if e.getparent() is None:
                 return None
             e.getparent().remove(e)
+    return t
+
+
+def filter_or_validate(t, filter_invalid=False, base_url="", source=None, validation_errors=dict()):
+    log.debug("Filtering invalids from {}".format(base_url))
+    if filter_invalid:
+        t = filter_invalids_from_document(t, base_url=base_url, validation_errors=validation_errors)
+        for entity_id, err in validation_errors:
+            log.error("Validation error while parsing {} (from {}). Removed @entityID='{}': {}".format(base_url,
+                                                                                                       source,
+                                                                                                       entity_id,
+                                                                                                       err))
+    else:  # all or nothing
+        log.debug("Validating (one-shot) {}".format(base_url))
+        try:
+            return validate_document(t)
+        except DocumentInvalid as ex:
+            err = xml_error(ex.error_log, m=base_url)
+            validation_errors[base_url] = err
+            raise MetadataException("Validation error while parsing {}: (from {}): {}".format(base_url,
+                                                                                              source,
+                                                                                              err))
+
     return t
 
 
@@ -196,6 +223,7 @@ def entitiesdescriptor(entities,
                        cache_duration=None,
                        valid_until=None,
                        validate=True,
+                       filter_invalid=True,
                        copy=True,
                        nsmap=None):
     """
@@ -206,6 +234,8 @@ def entitiesdescriptor(entities,
 :param valid_until: a relative time eg 2w 4d 1h for 2 weeks, 4 days and 1hour from now.
 :param copy: set to False to avoid making a copy of all the entities in list. This may be dangerous.
 :param validate: set to False to skip schema validation of the resulting EntitiesDesciptor element. This is dangerous!
+:param filter_invalid: remove invalid entitiesdescriptor elements from aggregate
+:param nsmap: additional namespace definitions to include in top level entitiesdescriptor element
 
 Produce an EntityDescriptors set from a list of entities. Optional Name, cacheDuration and validUntil are affixed.
     """
@@ -213,11 +243,11 @@ Produce an EntityDescriptors set from a list of entities. Optional Name, cacheDu
     if nsmap is None:
         nsmap = dict()
 
-    def _resolve(member, l_fn):
-        if hasattr(member, 'tag'):
-            return [member]
+    def _resolve(m, l_fn):
+        if hasattr(m, 'tag'):
+            return [m]
         else:
-            return l_fn(member)
+            return l_fn(m)
 
     nsmap.update(NS)
     resolved_entities = set()
@@ -252,11 +282,16 @@ Produce an EntityDescriptors set from a list of entities. Optional Name, cacheDu
             fd.write(dumptree(t))
 
     if validate:
-        try:
-            validate_document(t)
-        except DocumentInvalid as ex:
-            log.error("Validation errors found for {}: {}".format(t.get('Name'),xml_error(ex.error_log)))
-            raise MetadataException("XML schema validation failed: %s" % name)
+        validation_errors = dict()
+        t = filter_or_validate(t,
+                               filter_invalid=filter_invalid,
+                               base_url=name,
+                               source="request",
+                               validation_errors=validation_errors)
+
+        for base_url, err in validation_errors.items():
+            log.error("Validation error: @ {}: {}".format(base_url, err))
+
     return t
 
 
@@ -442,6 +477,7 @@ def entity_attribute_dict(entity):
         d[ATTRS['software']] = [guess_entity_software(entity)]
 
     return d
+
 
 def gen_icon(e):
     scopes = entity_scopes(e)
@@ -642,6 +678,7 @@ def entity_simple_summary(e):
         d['privacy_statement_url'] = psu
 
     return d
+
 
 def entity_orgurl(entity, langs=None):
     for organizationUrl in filter_lang(entity.iter("{%s}OrganizationURL" % NS['md']), langs=langs):
@@ -855,7 +892,7 @@ def set_reginfo(e, policy=None, authority=None):
     ext = entity_extensions(e)
     ri = ext.find(".//{%s}RegistrationInfo" % NS['mdrpi'])
     if ri is not None:
-        raise MetadataException("A RegistrationInfo element is already present")
+        ext.remove(ri)
 
     ri = etree.Element("{%s}RegistrationInfo" % NS['mdrpi'])
     ext.append(ri)
@@ -895,6 +932,7 @@ Entities where no value exists for the given 'sxp' are sorted last.
 :param t: An element tree containing the entities to sort
 :param sxp: xpath expression selecting the value used for sorting the entities
 """
+
     def get_key(e):
         eid = e.attrib.get('entityID')
         sv = None
@@ -917,3 +955,79 @@ Entities where no value exists for the given 'sxp' are sorted last.
 
     container = root(t)
     container[:] = sorted(container, key=lambda e: get_key(e))
+
+
+class MDRepository():
+    """A class representing a set of SAML metadata and the resources from where this metadata was loaded.
+    """
+
+    def __init__(self):
+        self.rm = ResourceManager()
+        self.store = None
+
+    def _lookup(self, member, store=None):
+        if store is None:
+            store = self.store
+
+        if member is None:
+            member = "entities"
+
+        if type(member) is str or type(member) is unicode:
+            if '!' in member:
+                (src, xp) = member.split("!")
+                if len(src) == 0:
+                    src = None
+                return self.lookup(src, xp=xp, store=store)
+
+        log.debug("calling store lookup %s" % member)
+        return store.lookup(member)
+
+    def lookup(self, member, xp=None, store=None):
+        """
+Lookup elements in the working metadata repository
+
+:param member: A selector (cf below)
+:type member: basestring
+:param xp: An optional xpath filter
+:type xp: basestring
+:param store: the store to operate on
+:return: An interable of EntityDescriptor elements
+:rtype: etree.Element
+
+
+**Selector Syntax**
+
+    - selector "+" selector
+    - [sourceID] "!" xpath
+    - attribute=value or {attribute}value
+    - entityID
+    - source (typically @Name from an EntitiesDescriptor set but could also be an alias)
+
+The first form results in the intersection of the results of doing a lookup on the selectors. The second form
+results in the EntityDescriptor elements from the source (defaults to all EntityDescriptors) that match the
+xpath expression. The attribute-value forms resuls in the EntityDescriptors that contain the specified entity
+attribute pair. If non of these forms apply, the lookup is done using either source ID (normally @Name from
+the EntitiesDescriptor) or the entityID of single EntityDescriptors. If member is a URI but isn't part of
+the metadata repository then it is fetched an treated as a list of (one per line) of selectors. If all else
+fails an empty list is returned.
+
+        """
+        if store is None:
+            store = self.store
+
+        l = self._lookup(member, store=store)
+        if hasattr(l, 'tag'):
+            l = [l]
+        elif hasattr(l, '__iter__'):
+            l = list(l)
+
+        if xp is None:
+            return l
+        else:
+            log.debug("filtering %d entities using xpath %s" % (len(l), xp))
+            t = entitiesdescriptor(l, 'dummy', lookup_fn=self.lookup)
+            if t is None:
+                return []
+            l = root(t).xpath(xp, namespaces=NS, smart_strings=False)
+            log.debug("got %d entities after filtering" % len(l))
+            return l

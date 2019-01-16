@@ -21,7 +21,7 @@ from iso8601 import iso8601
 from lxml.etree import DocumentInvalid
 from .constants import NS
 from .decorators import deprecated
-from .logs import log
+from .logs import get_log
 from .pipes import Plumbing, PipeException, PipelineCallback, pipe
 from .stats import set_metadata_info
 from .utils import total_seconds, dumptree, safe_write, root, with_tree, duration2timedelta, xslt_transform, validate_document
@@ -36,7 +36,7 @@ from .store import make_store_instance
 __author__ = 'leifj'
 
 FILESPEC_REGEX = "([^ \t\n\r\f\v]+)\s+as\s+([^ \t\n\r\f\v]+)"
-
+log = get_log(__name__)
 
 @pipe
 def dump(req, *opts):
@@ -516,7 +516,6 @@ Defaults are marked with (*)
 
 def _select_args(req):
     args = req.args
-    log.debug("selecting using args: %s" % args)
     if args is None and 'select' in req.state:
         args = [req.state.get('select')]
     if args is None:
@@ -525,6 +524,8 @@ def _select_args(req):
         args = req.store.lookup('entities')
     if args is None or not args:
         args = []
+
+    log.debug("selecting using args: %s" % args)
 
     return args
 
@@ -1217,13 +1218,24 @@ If operating on a single EntityDescriptor then @Name is ignored (cf :py:mod:`pyf
     e = root(req.t)
     if e.tag == "{%s}EntitiesDescriptor" % NS['md']:
         name = req.args.get('name', None)
-        if name is None or not len(name):
+        if name is None or 0 == len(name):
             name = req.args.get('Name', None)
-        if name is None or not len(name):
+        if name is None or 0 == len(name):
             name = req.state.get('url', None)
-        if name is None or not len(name):
+            if name and 'baseURL' in req.args:
+
+                try:
+                    name_url = urlparse(name)
+                    base_url = urlparse(req.args.get('baseURL'))
+                    name = "{}://{}{}".format(base_url.scheme,base_url.netloc,name_url.path)
+                    log.debug("-------- using Name: %s" % name)
+                except ValueError as ex:
+                    log.debug(ex)
+                    name = None
+        if name is None or 0 == len(name):
             name = e.get('Name', None)
-        if name is not None and len(name):
+
+        if name:
             e.set('Name', name)
 
     now = datetime.utcnow()

@@ -65,12 +65,10 @@ from cherrypy.lib import caching
 from simplejson import dumps
 from .constants import config
 from .locks import ReadWriteLock
-from .mdrepo import MDRepository
 from .pipes import plumbing
-from .utils import resource_string, xslt_transform, dumptree, duration2timedelta, \
-    debug_observer, render_template, hash_id
-from .logs import log, SysLogLibHandler
-from .samlmd import entity_simple_summary, entity_display_name, entity_info
+from .utils import resource_string, duration2timedelta, debug_observer, render_template, hash_id
+from .logs import get_log, SysLogLibHandler
+from .samlmd import entity_simple_summary, entity_display_name, entity_info, MDRepository
 import logging
 from .stats import stats
 from datetime import datetime
@@ -81,7 +79,7 @@ from .i18n import language
 from . import samlmd
 
 _ = language.ugettext
-
+log = get_log(__name__)
 site_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "site")
 
 
@@ -313,6 +311,7 @@ class SHIBDiscovery(object):
     @cherrypy.expose
     def DS(self, *args, **kwargs):
         kwargs['path'] = "/role/idp.ds"
+        kwargs['request_type'] = 'discovery'
         return self.server.request(**kwargs)
 
     @cherrypy.expose
@@ -409,7 +408,7 @@ Disallow: /
         """Process an MDX request with Content-Type hard-coded to application/xml. Regardless of the suffix
         you will get XML back from /entities/...
         """
-        return self.server.request(path=path, content_type="application/xml")
+        return self.server.request(path=path, request_type='mdq', content_type="application/xml")
 
     @cherrypy.expose
     def metadata(self, path=None):
@@ -555,8 +554,9 @@ class MDServer(object):
         pfx = kwargs.get('pfx', None)
         path = kwargs.get('path', None)
         content_type = kwargs.get('content_type', None)
+        request_type = kwargs.get('request_type', "negotiate")
 
-        # log.debug("MDServer pfx=%s, path=%s, content_type=%s" % (pfx, path, content_type))
+        log.debug("MDServer pfx=%s, path=%s, content_type=%s" % (pfx, path, content_type))
 
         def _d(x, do_split=True):
             if x is not None:
@@ -711,7 +711,7 @@ class MDServer(object):
                                                entity=entity_info(entity))
             else:
                 for p in self.plumbings:
-                    state = {'request': True,
+                    state = {'request': request_type,
                              'headers': {'Content-Type': 'text/xml'},
                              'accept': accept,
                              'url': cherrypy.url(relative=False),
