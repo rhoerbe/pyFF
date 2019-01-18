@@ -4,7 +4,6 @@ An abstraction layer for metadata fetchers. Supports both syncronous and asyncro
 
 """
 
-from __future__ import absolute_import, unicode_literals
 from .logs import get_log
 import os
 import requests
@@ -21,6 +20,7 @@ from .utils import url_get
 requests.packages.urllib3.disable_warnings()
 
 log = get_log(__name__)
+
 
 class ResourceManager(DictMixin):
     def __init__(self):
@@ -40,16 +40,16 @@ class ResourceManager(DictMixin):
             del self._resources[key]
 
     def keys(self):
-        return self._resources.keys()
+        return list(self._resources.keys())
 
     def values(self):
-        return self._resources.values()
+        return list(self._resources.values())
 
     def walk(self, url=None):
         if url is not None:
             return self[url].walk()
         else:
-            i = [r.walk() for r in self.values()]
+            i = [r.walk() for r in list(self.values())]
             return chain(*i)
 
     def add(self, r):
@@ -65,7 +65,7 @@ class ResourceManager(DictMixin):
         if url is not None:
             resources = deque([self[url]])
         else:
-            resources = deque(self.values())
+            resources = deque(list(self.values()))
 
         with futures.ThreadPoolExecutor(max_workers=config.worker_pool_size) as executor:
             while resources:
@@ -121,7 +121,7 @@ class Resource(object):
 
     def __str__(self):
         return "Resource {} expires at {} using ".format(self.url, self.expire_time) + \
-               ",".join(["{}={}".format(k, v) for k, v in self.opts.items()])
+               ",".join(["{}={}".format(k, v) for k, v in list(self.opts.items())])
 
     def walk(self):
         yield self
@@ -196,11 +196,11 @@ class Resource(object):
 
             if self.is_expired():
                 info['Expired'] = True
-                raise ResourceException("Resource at {} expired on {}".format(self.url,self.expire_time))
+                raise ResourceException("Resource at {} expired on {}".format(self.url, self.expire_time))
             else:
                 info['Expired'] = False
 
-            for (eid, error) in info['Validation Errors'].items():
+            for (eid, error) in list(info['Validation Errors'].items()):
                 log.error(error)
 
             if store is not None:
