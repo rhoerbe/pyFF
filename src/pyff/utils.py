@@ -258,6 +258,8 @@ def safe_write(fn, data):
         with tempfile.NamedTemporaryFile(mode, **kwargs) as tmp:
             if six.PY2:
                 data = data.encode('utf-8')
+            else:
+                data = str(data)
 
             log.debug("safe writing {} chrs into {}".format(len(data), fn))
             tmp.write(data)
